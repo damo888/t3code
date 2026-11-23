@@ -1,0 +1,16 @@
+{
+  "ai": {
+    "baseUrl": "http://localhost:11434/v1",
+    "apiKey": "",
+    "model": "qwen2.5:14b",
+    "instructions": ""
+  },
+  "telegram": {
+    "token": "",
+    "allowedUserIds": []
+  },
+  "notify": {
+    "enabled": true,
+    "intervalSeconds": 20
+  }
+}

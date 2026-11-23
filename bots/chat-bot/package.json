@@ -1,0 +1,13 @@
+{
+  "name": "t3-chat-bot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Telegram or terminal bot that drives T3 Code on this computer, with any OpenAI-compatible AI.",
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

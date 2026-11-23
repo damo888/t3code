@@ -1,5 +1,6 @@
 import {
   AuthAccessWriteScope,
+  AuthMcpClientAccess,
   AuthRevokePairingLinkInput,
   AuthSessionId,
   AuthStandardClientScopes,
@@ -375,6 +376,37 @@ const sessionRevokeCommand = Command.make("revoke", {
   ),
 );
 
+const agentTokenCommand = Command.make("agent-token", {
+  ...authLocationFlags,
+  label: labelFlag,
+  access: Flag.Literals("access", AuthMcpClientAccess.literals).pipe(
+    Flag.withDescription(
+      "Most an agent may do: read-only, approval-required, auto-accept-edits, auto or full-access.",
+    ),
+    Flag.withDefault("approval-required" as const),
+  ),
+}).pipe(
+  Command.withDescription(
+    "Issue an MCP token for an outside agent on this machine, such as a chat bot, without the browser sign-in. Revoke it with `t3 auth session revoke`.",
+  ),
+  Command.withHandler((flags) =>
+    runWithEnvironmentAuth(
+      flags,
+      (environmentAuth) =>
+        Effect.gen(function* () {
+          const issued = yield* environmentAuth.issueMcpClientSession({
+            label: Option.getOrElse(flags.label, () => "local agent"),
+            access: flags.access,
+            peerLink: false,
+            client: { deviceType: "bot" },
+          });
+          yield* Console.log(issued.token);
+        }),
+      { quietLogs: true },
+    ),
+  ),
+);
+
 const sessionCommand = Command.make("session").pipe(
   Command.withDescription("Manage bearer sessions."),
   Command.withSubcommands([sessionIssueCommand, sessionListCommand, sessionRevokeCommand]),
@@ -382,5 +414,10 @@ const sessionCommand = Command.make("session").pipe(
 
 export const authCommand = Command.make("auth").pipe(
   Command.withDescription("Manage the local auth control plane for headless deployments."),
-  Command.withSubcommands([pairingCommand, sessionCommand, connectDeviceCommand]),
+  Command.withSubcommands([
+    pairingCommand,
+    sessionCommand,
+    connectDeviceCommand,
+    agentTokenCommand,
+  ]),
 );
