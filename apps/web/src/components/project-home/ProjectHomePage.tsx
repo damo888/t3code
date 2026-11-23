@@ -42,7 +42,14 @@ import {
   setTaskDone,
   type PlanTask,
 } from "./planDocument";
+import { AskPlanner, BotsBar } from "./ProjectBots";
 import { reviewPrompt, taskPrompt, type ProjectHomeTab } from "./projectHome.logic";
+import {
+  applyRoleModel,
+  roleModelSelection,
+  useProjectRoles,
+  type ProjectRoles,
+} from "./projectRoles";
 
 function TaskThreadStatus({ thread }: { thread: NonNullable<PlanTask["thread"]> }) {
   const ref = scopeThreadRef(
@@ -71,7 +78,7 @@ function TaskThreadStatus({ thread }: { thread: NonNullable<PlanTask["thread"]> 
   );
 }
 
-function PlanTab({ project }: { project: EnvironmentProject }) {
+function PlanTab({ project, roles }: { project: EnvironmentProject; roles: ProjectRoles }) {
   const gt = useGT();
   const handleNewThread = useNewThreadHandler();
   const canWrite = useEnvironmentScope(project.environmentId, AuthFilesystemWriteScope);
@@ -109,6 +116,7 @@ function PlanTab({ project }: { project: EnvironmentProject }) {
       prompt: taskPrompt(task.text),
     });
     if (!opened) return;
+    applyRoleModel(opened.draftId, roleModelSelection(roles, "builder"));
     await save(
       linkTaskThread(source, task.line, {
         environmentId: project.environmentId,
@@ -149,6 +157,7 @@ function PlanTab({ project }: { project: EnvironmentProject }) {
   return (
     <ScrollArea className="min-h-0 flex-1">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-5 py-6">
+        <AskPlanner project={project} roles={roles} />
         <p className="text-muted-foreground text-xs">
           <T>
             Saved in PLAN.md at the project root. Start a task to open a thread for it; its status
@@ -234,7 +243,7 @@ function PlanTab({ project }: { project: EnvironmentProject }) {
   );
 }
 
-function ReviewTab({ project }: { project: EnvironmentProject }) {
+function ReviewTab({ project, roles }: { project: EnvironmentProject; roles: ProjectRoles }) {
   const handleNewThread = useNewThreadHandler();
   const threads = useBoardThreads(
     (thread) => thread.environmentId === project.environmentId && thread.projectId === project.id,
@@ -277,13 +286,17 @@ function ReviewTab({ project }: { project: EnvironmentProject }) {
             <Button
               size="sm"
               variant="outline"
-              onClick={() =>
-                void handleNewThread(scopeProjectRef(project.environmentId, project.id), {
-                  prompt: reviewPrompt(thread.title, thread.branch),
-                  ...(thread.branch ? { branch: thread.branch } : {}),
-                  ...(thread.worktreePath ? { worktreePath: thread.worktreePath } : {}),
-                })
-              }
+              onClick={async () => {
+                const opened = await handleNewThread(
+                  scopeProjectRef(project.environmentId, project.id),
+                  {
+                    prompt: reviewPrompt(thread.title, thread.branch),
+                    ...(thread.branch ? { branch: thread.branch } : {}),
+                    ...(thread.worktreePath ? { worktreePath: thread.worktreePath } : {}),
+                  },
+                );
+                if (opened) applyRoleModel(opened.draftId, roleModelSelection(roles, "reviewer"));
+              }}
             >
               <T>Get a second review</T>
             </Button>
@@ -309,6 +322,7 @@ export function ProjectHomePage({
   const project = useProject(
     scopeProjectRef(EnvironmentId.make(environmentId), ProjectId.make(projectId)),
   );
+  const [roles, setRoles] = useProjectRoles(`${environmentId}:${projectId}`);
   const boardThreads = useBoardThreads(
     (thread) => thread.environmentId === environmentId && thread.projectId === projectId,
   );
@@ -368,11 +382,17 @@ export function ProjectHomePage({
             </EmptyHeader>
           </Empty>
         ) : tab === "plan" ? (
-          <PlanTab project={project} />
+          <>
+            <BotsBar project={project} roles={roles} onChange={setRoles} />
+            <PlanTab project={project} roles={roles} />
+          </>
         ) : tab === "board" ? (
           <BoardColumns threads={boardThreads} />
         ) : (
-          <ReviewTab project={project} />
+          <>
+            <BotsBar project={project} roles={roles} onChange={setRoles} />
+            <ReviewTab project={project} roles={roles} />
+          </>
         )}
       </div>
     </SidebarInset>
