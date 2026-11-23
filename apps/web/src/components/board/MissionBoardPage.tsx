@@ -16,7 +16,10 @@ import {
   scopeProjectRef,
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
-import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
+import type {
+  EnvironmentProject,
+  EnvironmentThreadShell,
+} from "@t3tools/client-runtime/state/shell";
 
 import { isElectron } from "../../env";
 import { useNowMinute } from "../../hooks/useNowMinute";
@@ -43,7 +46,7 @@ const COLUMN_ACCENT: Record<BoardColumn, string> = {
   done: "bg-muted-foreground/40",
 };
 
-function StatusGlyph({ status }: { status: SidebarThreadStatus }) {
+export function StatusGlyph({ status }: { status: SidebarThreadStatus }) {
   switch (status) {
     case "approval":
       return <ShieldQuestionIcon className="size-3.5 text-warning" />;
@@ -63,7 +66,7 @@ function StatusGlyph({ status }: { status: SidebarThreadStatus }) {
   }
 }
 
-function useStatusLabel() {
+export function useStatusLabel() {
   const gt = useGT();
   return (status: SidebarThreadStatus): string => {
     switch (status) {
@@ -108,7 +111,16 @@ function BoardCardView({
     <article className="relative flex flex-col gap-2 rounded-lg border bg-card p-3 text-card-foreground shadow-xs/5 transition-colors focus-within:border-ring hover:border-ring/60 hover:bg-accent/40">
       <div className="flex items-center gap-2 text-muted-foreground text-xs">
         {project ? <ProjectFavicon project={project} className="size-3.5 shrink-0" /> : null}
-        <span className="truncate">{project?.title ?? ""}</span>
+        {project ? (
+          <Link
+            to="/project/$environmentId/$projectId"
+            params={{ environmentId: project.environmentId, projectId: project.id }}
+            search={{ tab: "plan" }}
+            className="relative z-10 truncate no-underline hover:text-foreground hover:underline"
+          >
+            {project.title}
+          </Link>
+        ) : null}
         <span className="ms-auto shrink-0 tabular-nums">{updated}</span>
       </div>
       {/* The title link stretches over the whole card; the approval block sits above it. */}
@@ -183,22 +195,27 @@ function BoardColumnView({
   );
 }
 
-export function MissionBoardPage() {
-  const nowMinute = useNowMinute();
-  const now = Date.parse(`${nowMinute}:00Z`);
+export function useBoardThreads(
+  filter?: (thread: EnvironmentThreadShell) => boolean,
+): EnvironmentThreadShell[] {
   const shells = useVisibleThreadShells();
   const delegated = useDelegatedUnderParent();
+  const visible = filterSidebarV2VisibleThreads(shells, null, delegated);
+  return filter ? visible.filter(filter) : visible;
+}
+
+export function BoardColumns({ threads }: { threads: ReadonlyArray<EnvironmentThreadShell> }) {
+  const nowMinute = useNowMinute();
+  const now = Date.parse(`${nowMinute}:00Z`);
   const projects = useProjects();
   const statusLabel = useStatusLabel();
-
   const projectByKey = new Map(
     projects.map((project) => [
       scopedProjectKey(scopeProjectRef(project.environmentId, project.id)),
       project,
     ]),
   );
-  const columns = buildBoardColumns(filterSidebarV2VisibleThreads(shells, null, delegated));
-
+  const columns = buildBoardColumns(threads);
   const meta: Record<BoardColumn, { title: ReactNode; hint: ReactNode }> = {
     "needs-you": {
       title: <T>Needs you</T>,
@@ -217,7 +234,36 @@ export function MissionBoardPage() {
       hint: <T>Settled threads land here.</T>,
     },
   };
+  return (
+    <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-3">
+      {BOARD_COLUMNS.map((column) => (
+        <BoardColumnView
+          key={column}
+          title={meta[column].title}
+          hint={meta[column].hint}
+          accent={COLUMN_ACCENT[column]}
+          count={columns[column].length}
+        >
+          {columns[column].map((card) => (
+            <BoardCardView
+              key={`${card.thread.environmentId}:${card.thread.id}`}
+              card={card}
+              project={projectByKey.get(
+                scopedProjectKey(scopeProjectRef(card.thread.environmentId, card.thread.projectId)),
+              )}
+              now={now}
+              statusLabel={statusLabel(card.status)}
+            />
+          ))}
+        </BoardColumnView>
+      ))}
+    </div>
+  );
+}
 
+export function MissionBoardPage() {
+  const threads = useBoardThreads();
+  const waiting = buildBoardColumns(threads)["needs-you"].length;
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none">
       <div className="flex min-h-0 flex-1 flex-col bg-background">
@@ -226,38 +272,14 @@ export function MissionBoardPage() {
             <T>Board</T>
           </h1>
           <span className="text-muted-foreground text-xs">
-            {columns["needs-you"].length > 0 ? (
+            {waiting > 0 ? (
               <T>
-                <Var>{columns["needs-you"].length}</Var> waiting on you
+                <Var>{waiting}</Var> waiting on you
               </T>
             ) : null}
           </span>
         </WorkspacePageHeader>
-        <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto p-3">
-          {BOARD_COLUMNS.map((column) => (
-            <BoardColumnView
-              key={column}
-              title={meta[column].title}
-              hint={meta[column].hint}
-              accent={COLUMN_ACCENT[column]}
-              count={columns[column].length}
-            >
-              {columns[column].map((card) => (
-                <BoardCardView
-                  key={`${card.thread.environmentId}:${card.thread.id}`}
-                  card={card}
-                  project={projectByKey.get(
-                    scopedProjectKey(
-                      scopeProjectRef(card.thread.environmentId, card.thread.projectId),
-                    ),
-                  )}
-                  now={now}
-                  statusLabel={statusLabel(card.status)}
-                />
-              ))}
-            </BoardColumnView>
-          ))}
-        </div>
+        <BoardColumns threads={threads} />
       </div>
     </SidebarInset>
   );

@@ -64,6 +64,7 @@ import {
   BugIcon,
   ChartNoAxesColumnIcon,
   KanbanSquareIcon,
+  ListTodoIcon,
   CheckIcon,
   ChevronRightIcon,
   CornerLeftUpIcon,
@@ -1762,6 +1763,24 @@ function OpenCommandPaletteDialog(props: {
       icon: <WorkflowIcon className={ITEM_ICON_CLASS} />,
       run: async () => {
         await navigate({ to: "/workflows" });
+      },
+    });
+  }
+
+  if (currentProject) {
+    const project = currentProject;
+    actionItems.push({
+      kind: "action",
+      value: "action:project-home",
+      searchTerms: ["project", "plan", "tasks", "roadmap", "review", "home", project.title],
+      title: gt("Open {project} plan", { project: project.title }),
+      icon: <ListTodoIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        await navigate({
+          to: "/project/$environmentId/$projectId",
+          params: { environmentId: project.environmentId, projectId: project.id },
+          search: { tab: "plan" },
+        });
       },
     });
   }
